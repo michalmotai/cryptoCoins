@@ -287,16 +287,22 @@ input:checked + .slider:before {
 } */
 
 .parallax {
-  background-image: url('./src/63423-binary-option-exchange-bitcoin-trade-cryptocurrency-investment.png');
+  /* The image used */
+  background-image: url('./src/6238016.jpg');
 
   /* Set a specific height */
-  min-height: 700px;
+  min-height: 500px;
 
   /* Create the parallax scrolling effect */
   background-attachment: fixed;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
+}
+
+#contentContainer {
+  position: relative;
+  height: 1000px;
 }
 
 /* .loader,
@@ -340,3 +346,7 @@ input:checked + .slider:before {
     box-shadow: 0 2.5em 0 0;
   }
 } */
+
+.img {
+  width: 100%;
+}

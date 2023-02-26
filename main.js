@@ -1,11 +1,13 @@
 $(document).ready(function () {
   const coinsUrl = 'https://api.coingecko.com/api/v3/coins/';
+  const graphsDataUrl = 'https://min-api.cryptocompare.com/data/pricemulti';
   let coins = [];
   let coins_moreInfo = [];
   const MORE_INFO_LOCAL_STORAGE_KEY = 'moreInfo';
   const TWO_MINUTES = 120000; // 2 minutes
   const moreInfoTimers = {};
-  const selectedCoins = [];
+  let selectedCoins = [];
+
   localStorage.setItem(MORE_INFO_LOCAL_STORAGE_KEY, JSON.stringify({}));
 
   const selectors = {
@@ -14,12 +16,14 @@ $(document).ready(function () {
     aboutSection: '#aboutSection',
     reportSection: '#reportSection',
     loader: '#loader',
-    //modal: '#modal',
   };
 
   const { main, homeSection, aboutSection, reportSection } = selectors;
-
   const loader = `<div class="loaderContainer" id="loader"><div class="loader"></div></div>`;
+  let intervalId = null;
+
+  $(reportSection).remove();
+  $(aboutSection).remove();
 
   //recognise the nav button pressed
   $('.links').on('click', function () {
@@ -44,6 +48,7 @@ $(document).ready(function () {
         break;
 
       case reportSection:
+        createReportSection();
         //alert('report');
         break;
 
@@ -55,121 +60,30 @@ $(document).ready(function () {
   });
 
   function createHomeSection() {
-    handleCoins();
-    selectCoinsForReport(coins);
+    $(main).empty();
+    let homeSection = $(selectors.homeSection);
 
-    function selectCoinsForReport() {
-      const selectedCoins = [];
-
-      $('#homeSection').on('click', '.checkbox', function () {
-        let coin = $(this).val();
-
-        if ($(this).prop('checked')) {
-          // Check if the number of selected coins is less than 5
-          if (selectedCoins.length < 5) {
-            selectedCoins.push(coin);
-            console.log(selectedCoins);
-          } else {
-            const lastSelectCoin = coin;
-            $(this).prop('checked', false);
-            //alert(`you can only choose 5 coins:`);
-            console.log(coin);
-
-            let content = '';
-            for (coin of selectedCoins) {
-              let text = `
-              <div class="selectedItemsDiv"> 
-              <label class="switch">
-                  <input type="checkbox" class="checkbox" value="${coin}" checked>
-                  <span class="slider round"></span>
-                </label>
-                ${coin} </div>`;
-
-              content += text;
-            }
-
-            // If the user has already selected 5 coins
-
-            const modal = document.createElement('div');
-            modal.classList.add('modal');
-            modal.innerHTML = `<div  id="staticBackdrop" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
-            <div class="modal-dialog">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h4 class="modal-title" id="staticBackdropLabel">Only 5 coins can be selected for live reports!</h4>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                  <h4>Would like to add <strong> ${lastSelectCoin} </strong> to the list?</h4>
-                 
-                 choose antoher coin to remove <br><br>
-                  ${content}
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-secondary close" data-bs-dismiss="modal" >cancel</button>
-                  <button type="button" class="btn btn-primary" id = "updateCoins">update coins</button>
-                </div>
-              </div>
-            </div>
-          </div>`;
-
-            // Add the  to the page
-            $('#homeSection').append(modal);
-
-            // Get the modal buttons
-            const closeButton = modal.querySelector('.close');
-            const updateButton = modal.querySelector('#updateCoins');
-
-            // Add an event listener to the close button to hide the modal when clicked
-            closeButton.addEventListener('click', function () {
-              modal.style.display = 'none';
-            });
-            // Add an event listener to the update button to update selected coins
-            updateButton.addEventListener('click', function () {
-              if (selectedCoins.length === 5) {
-                alert('please remove a coin');
-              } else {
-                selectedCoins.push(lastSelectCoin);
-                console.log('after push', selectedCoins);
-
-                // removeFromSelectedCoins(coin);
-                // console.log('after removal', selectedCoins);
-
-                updateToggleButtons();
-                console.log('update', selectedCoins);
-
-                //console.log(`${lastSelectCoin}`);
-
-                modal.style.display = 'none';
-              }
-            });
-
-            // Show the modal
-            modal.style.display = 'block';
-          }
-        } else {
-          removeFromSelectedCoins(coin);
-          console.log('removed from selection', selectedCoins);
-        }
-
-        //console.log(selectedCoins);
+    //check if homeSection exists
+    if (!homeSection.length) {
+      homeSection = $('<section>', {
+        id: 'homeSection',
+        class: 'some-class',
       });
-
-      function removeFromSelectedCoins(coin) {
-        let index = selectedCoins.indexOf(coin);
-        if (index > -1) {
-          selectedCoins.splice(index, 1);
-        }
-      }
-
-      function updateToggleButtons() {
-        $('#homeSection .checkbox').each(function () {
-          const coin = $(this).val();
-          const isChecked = selectedCoins.includes(coin);
-          $(this).prop('checked', isChecked);
-        });
-      }
     }
+
+    //check if the report section keeps updating, and clears it if it does
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
+
+    //add homeSection to page
+    homeSection.appendTo(main);
+
+    //get coins data from api and display them in cards
+    handleCoins();
+
+    //keeps track of selected coins for report
+    selectCoinsForReport();
 
     $(homeSection).on('click', '.infoBtn', function () {
       const coinId = $(this).attr('data-coin-id');
@@ -198,19 +112,78 @@ $(document).ready(function () {
     });
   }
 
-  function createAboutSection() {
-    $(aboutSection).append(`<div class = "parallax"></div>`);
-    $(aboutSection).append(`<h1>Michal Motai</h1>`);
-    $(aboutSection)
-      .append(`<div>This is my CryptoCoins project </div>`)
-      .css('height: 1000px');
+  async function createReportSection() {
+    $(main).empty();
+    $(main).append('<div id="reportSection">' + loader + '</div>');
+
+    const data = await getDataForGraphs(selectedCoins);
+    drawGraph(data);
+
+    function drawGraph(data) {
+      var options = {
+        // ...
+        data: [],
+      };
+
+      const coinDataPoints = {};
+
+      intervalId = setInterval(() => {
+        for (const symbol in data) {
+          const price = data[symbol].USD;
+          const date = new Date();
+
+          // Create or get the array of data points for this coin symbol
+          if (!(symbol in coinDataPoints)) {
+            coinDataPoints[symbol] = [];
+          }
+          const coinDataPoint = {
+            x: date,
+            y: price,
+          };
+          coinDataPoints[symbol].push(coinDataPoint);
+
+          // Create the data series object for this coin symbol
+          const symbolData = {
+            type: 'spline',
+            showInLegend: true,
+            name: symbol,
+            dataPoints: coinDataPoints[symbol],
+          };
+
+          // Find the index of the data series object for this coin symbol in the options.data array
+          let symbolIndex = -1;
+          for (let i = 0; i < options.data.length; i++) {
+            if (options.data[i].name === symbol) {
+              symbolIndex = i;
+              break;
+            }
+          }
+
+          // Add or update the data series object for this coin symbol in the options.data array
+          if (symbolIndex >= 0) {
+            options.data[symbolIndex] = symbolData;
+          } else {
+            options.data.push(symbolData);
+          }
+        }
+        console.log(options.data);
+        const chart = new CanvasJS.Chart('reportSection', options);
+        chart.render();
+        $(selectors.loader).remove();
+      }, 2000);
+    }
+
+    //$('#reportSection').CanvasJSChart(options);
+
+    function toggleDataSeries(e) {
+      if (typeof e.dataSeries.visible === 'undefined' || e.dataSeries.visible) {
+        e.dataSeries.visible = false;
+      } else {
+        e.dataSeries.visible = true;
+      }
+      e.chart.render();
+    }
   }
-
-  function createReportSection() {}
-
-  $(homeSection).append(`
-    <div id="loader" class="loader"></div>
-  `);
 
   //get coins date from api.coingecko.com
   async function getCoinsData() {
@@ -221,6 +194,62 @@ $(document).ready(function () {
     } catch (error) {
       console.log(error);
     }
+  }
+
+  function createAboutSection() {
+    $(main).empty();
+    $(main).append('<div id="aboutSection" ></div>');
+    $(aboutSection).append('<div class="parallax"></div>');
+    const content = `<div id = "contentContainer"  >
+    <p>
+    This is a JavaScript app that interacts with two cryptocurrency
+    API endpoints: https://api.coingecko.com/api/v3/coins/ and
+    https://min-api.cryptocompare.com/data/pricemulti.
+  </p>
+ 
+    <p>
+      The app displays a list of cryptocurrencies retrieved from the
+      Coingecko API and allows the user to select which coins they
+      want to see price data for.
+    </p>
+
+    <p>
+      The app also has a report section that displays a graph of the
+      selected coins' prices over time, using data retrieved from the
+      Cryptocompare API.
+    </p>
+
+    <p>
+      The app uses jQuery to manipulate the DOM and handle user
+      events. It sets up event listeners to detect when the user
+      clicks on buttons and links, and it uses AJAX to make
+      asynchronous requests to the APIs.
+    </p>
+
+    <p>
+      The app also uses local storage to cache data about coins that
+      the user has viewed in more detail, so that it doesn't have to
+      make another API request for that coin's information for at
+      least two minutes.
+    </p>
+
+    <p>
+      The app has a number of helper functions that handle specific
+      tasks, such as creating and displaying the home, about, and
+      report sections of the app, selecting coins for the report, and
+      drawing the graph in the report section.
+    </p>
+
+    <p>
+      The app uses the CanvasJS library to render the graph. Overall,
+      this app provides a simple interface for users to view and
+      compare cryptocurrency prices over time, and it demonstrates how
+      to interact with multiple APIs and handle asynchronous data
+      fetching in a web app.
+    </p>
+  </div>`;
+
+    $(aboutSection).append(content);
   }
 
   //get coins data and display on page
@@ -264,11 +293,11 @@ $(document).ready(function () {
   async function handleCoins() {
     try {
       $('#main').append(loader);
-      //$('#loader').show();
+      $('.loaderContainer').show();
       coins = await getCoinsData();
 
       setTimeout(() => {
-        $('#loader').hide();
+        $('.loaderContainer').hide();
         displayCoins(coins);
       }, 100);
     } catch (error) {
@@ -291,8 +320,8 @@ $(document).ready(function () {
       console.error(error);
     }
   }
-  //display more info about each coin
 
+  //gets more info about each coin
   async function displayCoinMoreInfo(coinId) {
     const coin_moreInfo = await getSpecificCoinData(coinId);
     //console.log(coin_moreInfo);
@@ -320,8 +349,6 @@ $(document).ready(function () {
       console.log('items is already in storage');
     }
 
-    //console.log(coin_moreInfo['bitcoin']);
-
     localStorage.setItem(
       MORE_INFO_LOCAL_STORAGE_KEY,
       JSON.stringify(coins_moreInfo)
@@ -336,8 +363,9 @@ $(document).ready(function () {
     <p> ₪ &nbsp ${ils}</p>
      </div>`;
 
-    //show more info it button "moreInfo" is pressed.
+    //show more info when button "moreInfo" is pressed.
     //remove the data if it is pressed again
+
     if ($(`#moreInfoDiv_${coinId}`).length > 0) {
       $(`#moreInfoDiv_${coinId}`).remove();
     } else {
@@ -349,16 +377,144 @@ $(document).ready(function () {
     }
   }
 
+  function selectCoinsForReport() {
+    $('#homeSection').on('click', '.checkbox', function () {
+      let coin = $(this).val();
+
+      if ($(this).prop('checked')) {
+        // Check if the number of selected coins is less than 5
+        if (selectedCoins.length < 5) {
+          if (!selectedCoins.includes(coin)) {
+            selectedCoins.push(coin);
+          }
+
+          console.log(selectedCoins);
+          return selectedCoins;
+        } else {
+          const lastSelectCoin = coin;
+          $(this).prop('checked', false);
+          //alert(`you can only choose 5 coins:`);
+          console.log(coin);
+
+          let content = '';
+          for (coin of selectedCoins) {
+            let text = `
+            <div class="selectedItemsDiv"> 
+            <label class="switch">
+                <input type="checkbox" class="checkbox" value="${coin}" checked>
+                <span class="slider round"></span>
+              </label>
+              ${coin} </div>`;
+
+            content += text;
+          }
+
+          // If the user has already selected 5 coins
+
+          const modal = document.createElement('div');
+          modal.classList.add('modal');
+          modal.innerHTML = `<div  id="staticBackdrop" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h4 class="modal-title" id="staticBackdropLabel">Only 5 coins can be selected for live reports!</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body">
+                <h4>Would like to add <strong> ${lastSelectCoin} </strong> to the list?</h4>
+               
+               choose antoher coin to remove <br><br>
+                ${content}
+              </div>
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary close" data-bs-dismiss="modal" >cancel</button>
+                <button type="button" class="btn btn-primary" id = "updateCoins">update coins</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+
+          // Add the modal to the page
+          $('#homeSection').append(modal);
+
+          // Get the modal buttons
+          const closeButton = modal.querySelector('.close');
+          const updateButton = modal.querySelector('#updateCoins');
+
+          // Add an event listener to the close button to hide the modal when clicked
+          closeButton.addEventListener('click', function () {
+            modal.style.display = 'none';
+          });
+
+          // Add an event listener to the update button to update selected coins
+          updateButton.addEventListener('click', function () {
+            if (selectedCoins.length === 5) {
+              alert('please remove a coin');
+            } else {
+              selectedCoins.push(lastSelectCoin);
+              console.log('after push', selectedCoins);
+
+              updateToggleButtons();
+              console.log('update', selectedCoins);
+
+              //console.log(`${lastSelectCoin}`);
+
+              modal.style.display = 'none';
+            }
+          });
+
+          // Show the modal
+          modal.style.display = 'block';
+        }
+      } else {
+        removeFromSelectedCoins(coin);
+        console.log('removed from selection', selectedCoins);
+      }
+
+      return selectedCoins;
+    });
+
+    function removeFromSelectedCoins(coin) {
+      let index = selectedCoins.indexOf(coin);
+      if (index > -1) {
+        selectedCoins.splice(index, 1);
+      }
+    }
+
+    function updateToggleButtons() {
+      $('#homeSection .checkbox').each(function () {
+        const coin = $(this).val();
+        const isChecked = selectedCoins.includes(coin);
+        $(this).prop('checked', isChecked);
+      });
+    }
+    return selectedCoins;
+  }
+
+  async function getDataForGraphs(selectedCoins) {
+    try {
+      console.log(selectedCoins);
+      const response = await fetch(
+        `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${selectedCoins}&tsyms=USD`
+      );
+      const data = await response.json();
+      console.log(data);
+      return data;
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
   function getCoinFromLocalStorage() {
     const coin = localStorage.getItem(MORE_INFO_LOCAL_STORAGE_KEY);
     return coin ? JSON.parse(coin) : {};
   }
 
   //search input for coins
-  $('#searchInput').on('keyup', function () {
+  $('#searchInput').on('keyup input', function () {
     const textToSearch = $(this).val().toLowerCase();
     console.log(textToSearch);
-    if (textToSearch === '') {
+    if (!textToSearch) {
       displayCoins(coins);
     } else {
       const filteredCoins = coins.filter(
@@ -371,4 +527,6 @@ $(document).ready(function () {
       }
     }
   });
+
+  console.log('end');
 });
