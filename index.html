@@ -20,22 +20,29 @@
     <title>CryproCoins</title>
   </head>
   <header>
-    <div id="MenuContainer">
-      <div class="siteName">CRYPTONITE</div>
-
-      <a href="#" class="links" data-linksTo="homeSection">Home</a>
-      <a href="#" class="links" data-linksTo="aboutSection">About</a>
-      <a href="#" class="links" data-linksTo="reportSection">Reports</a>
-      <div id="menuSpacerDiv">|</div>
+    <div id="MenuContainer" class="container-fluid">
+      <div class="siteName">
+        <img
+          class="logo links"
+          data-linksTo="aboutSection"
+          src="./src/cryptoQueenLogo.png"
+          alt="ryptoQueenLogo" />
+      </div>
+      <div class="linksDiv">
+        <a href="#" class="links" data-linksTo="coinSection">Coins</a>
+        <a href="#" class="links" data-linksTo="reportSection">Live Reports</a>
+        <a href="#" class="links" data-linksTo="aboutSection">About</a>
+        <!-- <div id="menuSpacerDiv">|</div> -->
+      </div>
 
       <div id="searchBar">
         <label for="searchInput">Search</label>
         <input type="search" id="searchInput" placeholder="text to search" />
-        
       </div>
     </div>
   </header>
   <body>
     <div id="main"></div>
+    
   </body>
 </html>
